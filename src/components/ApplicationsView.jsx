@@ -1,0 +1,6 @@
+import { ClipboardList } from 'lucide-react'
+import { money, planLabel } from '../utils/pricing.js'
+
+export default function ApplicationsView({ applications, onBrowse }) {
+  return <main className="page-shell applications-page"><div className="page-title"><p className="eyebrow">Your progress</p><h1>My applications</h1><p>Applications submitted from this device are listed below.</p></div>{applications.length ? <div className="applications-list">{applications.map((application) => <article key={application.id}><div><span className="status-dot" /> <b>{application.status}</b></div><h2>{application.property}</h2><dl><div><dt>Applicant</dt><dd>{application.applicant}</dd></div><div><dt>Move-in date</dt><dd>{new Date(`${application.moveInDate}T12:00:00`).toLocaleDateString()}</dd></div><div><dt>Payment plan</dt><dd>{planLabel(application.paymentPlan)}</dd></div><div><dt>Estimated amount</dt><dd>{money(application.estimatedAmount)}</dd></div></dl></article>)}</div> : <div className="empty-state"><ClipboardList size={42} /><h2>No applications yet</h2><p>When you submit an application, you’ll be able to review it here.</p><button className="primary-button" onClick={onBrowse}>Find a room</button></div>}</main>
+}
