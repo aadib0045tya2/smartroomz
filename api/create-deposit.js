@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { SquareClient, SquareEnvironment } from 'square'
+import { ensureCustomerAccount } from '../server/customerAccounts.js'
 
 const AMOUNT_CENTS = 17500
 
@@ -37,10 +38,12 @@ export default async function handler(req, res) {
     })
     const payment = response.payment
     if (!payment?.id || payment.status !== 'COMPLETED') throw new Error('Square did not complete the payment.')
-    await db.from('room_holds').update({ status: 'paid', square_payment_id: payment.id, expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString() }).eq('id', hold.id)
+    let customerId = null
+    try { customerId = await ensureCustomerAccount(db, email, name) } catch (accountError) { console.error('Customer provisioning failed:', accountError.message) }
+    await db.from('room_holds').update({ customer_id: customerId, status: 'paid', square_payment_id: payment.id, expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString() }).eq('id', hold.id)
     await db.from('payments').upsert({ hold_id: hold.id, square_payment_id: payment.id, amount_cents: AMOUNT_CENTS, currency: 'USD', status: payment.status, receipt_url: payment.receiptUrl })
     await db.from('properties').update({ status: 'held', availability: 'Held' }).eq('id', property.id)
-    return res.status(200).json({ success: true, holdId: hold.id, receiptUrl: payment.receiptUrl || null })
+    return res.status(200).json({ success: true, holdId: hold.id, receiptUrl: payment.receiptUrl || null, accountReady: Boolean(customerId) })
   } catch (error) {
     await db.from('room_holds').update({ status: 'failed', active: false }).eq('id', hold.id)
     const detail = error?.body?.errors?.[0]?.detail

@@ -80,12 +80,11 @@ export default function App() {
     setApplications((current) => [application, ...current])
   }
   const submitCall = async (request) => {
-    const property = siteProperties.find((item) => item.id === request.propertyId)
-    if (supabase) {
-      const { error } = await supabase.from('call_requests').insert({ property_id: request.propertyId, property_title: property?.title, name: request.name, phone: request.phone, email: request.email, move_in_date: request.moveInDate, message: request.message, status: 'new' })
-      if (error) throw error
-    }
+    const response = await fetch('/api/create-call-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) })
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.error || 'Could not send your request.')
     setCallRequests((current) => [request, ...current])
+    return result
   }
   return <div className="app">
     <Header currentView={view} setView={setView} savedCount={favorites.length} onSearchFocus={() => { setView('browse'); setTimeout(() => searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0) }} onRequestCall={() => openCall()} />
