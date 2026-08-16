@@ -24,12 +24,13 @@ export default function Header({ currentView, setView, savedCount, onSearchFocus
                 <button onClick={() => go('applications')}>My applications</button>
                 <button onClick={() => go('saved')}>Saved rooms</button>
                 <button onClick={onRequestCall}>Talk to our team</button>
+                <button onClick={() => { window.location.href = '/admin' }}>Team admin</button>
               </div>
             )}
           </nav>
           <button className="mobile-menu-button" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? 'Close menu' : 'Open menu'}>{menuOpen ? <X /> : <Menu />}</button>
         </div>
-        {menuOpen && <div className="mobile-menu"><button onClick={() => go('browse')}>Browse rooms</button><button onClick={() => go('saved')}>Saved rooms ({savedCount})</button><button onClick={() => go('applications')}>My applications</button><button onClick={onRequestCall}>Request a call</button></div>}
+        {menuOpen && <div className="mobile-menu"><button onClick={() => go('browse')}>Browse rooms</button><button onClick={() => go('saved')}>Saved rooms ({savedCount})</button><button onClick={() => go('applications')}>My applications</button><button onClick={onRequestCall}>Request a call</button><button onClick={() => { window.location.href = '/admin' }}>Team admin</button></div>}
       </header>
     </>
   )
