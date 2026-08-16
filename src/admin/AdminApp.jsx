@@ -1,4 +1,4 @@
-import { ArrowLeft, Building2, CalendarClock, CreditCard, LogOut, Mail, Pencil, PhoneCall, Plus, Save, Trash2, UserPlus, Users } from 'lucide-react'
+import { ArrowLeft, Building2, CalendarClock, CreditCard, LogOut, Mail, Pencil, PhoneCall, Plus, RefreshCcw, Save, Trash2, UserPlus, Users } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Brand from '../components/Brand.jsx'
 import { fromPropertyRow, supabase, toPropertyRow } from '../lib/supabase.js'
@@ -83,6 +83,7 @@ function Dashboard({ session }) {
   const [data, setData] = useState({ properties: [], applications: [], calls: [], holds: [], members: [] })
   const [editor, setEditor] = useState(null)
   const [message, setMessage] = useState('')
+  const [republishingId, setRepublishingId] = useState('')
   const load = useCallback(async () => {
     const [properties, applications, calls, holds, membersResponse] = await Promise.all([
       supabase.from('properties').select('*').order('created_at', { ascending: false }),
@@ -102,13 +103,21 @@ function Dashboard({ session }) {
   const updateStatus = async (table, id, status) => { const { error } = await supabase.from(table).update({ status }).eq('id', id); setMessage(error?.message || 'Updated.'); load() }
   const removeProperty = async (property) => { if (!window.confirm(`Delete ${property.title}? Existing lead and payment history will be preserved.`)) return; const { error } = await supabase.from('properties').delete().eq('id', property.id); setMessage(error?.message || 'Listing deleted.'); load() }
   const releaseHold = async (hold) => { if (!window.confirm('Release this room hold? This does not issue a Square refund.')) return; await supabase.from('room_holds').update({ status: 'canceled', active: false }).eq('id', hold.id); if (hold.property_id) await supabase.from('properties').update({ status: 'published', availability: 'Available now' }).eq('id', hold.property_id); setMessage('Hold released. Issue any refund separately in Square.'); load() }
+  const republishProperty = async (property) => {
+    setRepublishingId(property.id); setMessage('')
+    const { error: holdError } = await supabase.from('room_holds').update({ status: 'canceled', active: false }).eq('property_id', property.id).eq('active', true)
+    if (holdError) { setMessage(holdError.message); setRepublishingId(''); return }
+    const { error: propertyError } = await supabase.from('properties').update({ status: 'published', availability: 'Available now' }).eq('id', property.id)
+    setMessage(propertyError?.message || `${property.title} is published and available again.`)
+    setRepublishingId(''); load()
+  }
   return <div className="admin-shell">
     <header className="admin-header"><Brand /><div><span>{session.user.email}</span><a href="/"><ArrowLeft size={15} /> Website</a><button onClick={() => supabase.auth.signOut()}><LogOut size={15} /> Sign out</button></div></header>
     <main><div className="admin-title"><div><p className="eyebrow">Operations dashboard</p><h1>Welcome back</h1><p>Everything your team needs to manage rooms and renter interest.</p></div>{tab === 'listings' && <button className="primary-button" onClick={() => setEditor({ ...blankProperty })}><Plus size={16} /> Add listing</button>}</div>
       <section className="admin-stats"><Stat icon={Building2} label="Published rooms" value={stats.available} /><Stat icon={Users} label="Total leads" value={stats.leads} /><Stat icon={PhoneCall} label="New call requests" value={stats.calls} /><Stat icon={CreditCard} label="Paid deposits" value={`$${stats.deposits.toLocaleString()}`} /></section>
       <nav className="admin-tabs">{[['listings','Listings'],['applications','Applications'],['calls','Call requests'],['holds','Deposits & holds'],['members','Team members']].map(([key,label]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}<span>{data[key === 'listings' ? 'properties' : key].length}</span></button>)}</nav>
       {message && <div className="admin-banner">{message}<button onClick={() => setMessage('')}>×</button></div>}
-      {tab === 'listings' && <Listings items={data.properties} onEdit={(p) => setEditor({ ...p })} onDelete={removeProperty} />}
+      {tab === 'listings' && <Listings items={data.properties} onEdit={(p) => setEditor({ ...p })} onDelete={removeProperty} onRepublish={republishProperty} republishingId={republishingId} />}
       {tab === 'applications' && <Leads items={data.applications} type="applications" onStatus={(id, status) => updateStatus('applications', id, status)} />}
       {tab === 'calls' && <Leads items={data.calls} type="calls" onStatus={(id, status) => updateStatus('call_requests', id, status)} />}
       {tab === 'holds' && <Holds items={data.holds} onRelease={releaseHold} />}
@@ -135,7 +144,7 @@ function TeamMembers({ members, session, onAdded }) {
 
 function Stat({ icon: Icon, label, value }) { return <article><Icon size={20} /><div><strong>{value}</strong><span>{label}</span></div></article> }
 
-function Listings({ items, onEdit, onDelete }) { return <div className="admin-grid">{items.map((item) => <article className="admin-listing" key={item.id}><img src={item.images[0] || '/smart-roomz-mascot.webp'} alt="" /><div><span className={`status-pill ${item.status}`}>{item.status}</span><h3>{item.title}</h3><p>{item.area}, {item.city} · ${item.weeklyPrice}/week · ${item.holdDeposit} hold</p></div><div className="row-actions"><button onClick={() => onEdit(item)}><Pencil size={15} /> Edit</button><button className="danger" onClick={() => onDelete(item)}><Trash2 size={15} /> Delete</button></div></article>)}</div> }
+function Listings({ items, onEdit, onDelete, onRepublish, republishingId }) { return <div className="admin-grid">{items.map((item) => <article className="admin-listing" key={item.id}><img src={item.images[0] || '/smart-roomz-mascot.webp'} alt="" /><div><span className={`status-pill ${item.status}`}>{item.status}</span><h3>{item.title}</h3><p>{item.area}, {item.city} · ${item.weeklyPrice}/week · ${item.holdDeposit} hold</p></div><div className="row-actions">{item.status === 'held' && <button className="republish" disabled={republishingId === item.id} onClick={() => onRepublish(item)}><RefreshCcw size={15} /> {republishingId === item.id ? 'Publishing…' : 'Publish again'}</button>}<button onClick={() => onEdit(item)}><Pencil size={15} /> Edit</button><button className="danger" onClick={() => onDelete(item)}><Trash2 size={15} /> Delete</button></div></article>)}</div> }
 
 function Leads({ items, type, onStatus }) {
   const statuses = type === 'calls' ? ['new','contacted','closed'] : ['submitted','contacted','qualified','payment','approved','moved_in','rejected']
