@@ -1,5 +1,5 @@
-import { ArrowLeft, Building2, CalendarClock, CreditCard, LogOut, Pencil, PhoneCall, Plus, Save, Trash2, Users } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { ArrowLeft, Building2, CalendarClock, CreditCard, LogOut, Mail, Pencil, PhoneCall, Plus, Save, Trash2, UserPlus, Users } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Brand from '../components/Brand.jsx'
 import { fromPropertyRow, supabase, toPropertyRow } from '../lib/supabase.js'
 
@@ -13,10 +13,11 @@ export default function AdminApp() {
   const [session, setSession] = useState(null)
   const [checking, setChecking] = useState(Boolean(supabase))
   const [authorized, setAuthorized] = useState(false)
+  const [passwordSetup, setPasswordSetup] = useState(new URLSearchParams(window.location.search).get('setup') === '1')
   useEffect(() => {
     if (!supabase) return
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => setSession(next))
+    const { data } = supabase.auth.onAuthStateChange((event, next) => { setSession(next); if (event === 'PASSWORD_RECOVERY') setPasswordSetup(true) })
     return () => data.subscription.unsubscribe()
   }, [])
   useEffect(() => {
@@ -28,6 +29,7 @@ export default function AdminApp() {
     })
   }, [session])
   if (checking) return <AdminLoading />
+  if (session && passwordSetup) return <PasswordSetup onDone={() => { setPasswordSetup(false); window.history.replaceState({}, '', '/admin') }} />
   if (!session || !authorized) return <AdminLogin session={session} />
   return <Dashboard session={session} />
 }
@@ -40,37 +42,62 @@ function AdminLogin({ session }) {
   const [message, setMessage] = useState(session ? 'This account is not authorized as an administrator.' : '')
   const submit = async (event) => {
     event.preventDefault(); setMessage('Working…')
-    const action = mode === 'signin' ? supabase.auth.signInWithPassword({ email: form.email, password: form.password }) : supabase.auth.signUp({ email: form.email, password: form.password })
-    const { error } = await action
-    setMessage(error ? error.message : mode === 'signup' ? 'Account created. Check your email if confirmation is enabled, then sign in.' : '')
+    if (mode === 'reset') {
+      const { error } = await supabase.auth.resetPasswordForEmail(form.email.trim().toLowerCase(), { redirectTo: 'https://smartroomz.vercel.app/admin' })
+      setMessage(error ? error.message : 'If that admin email exists, a password-reset link is on the way.')
+      return
+    }
+    const { error } = await supabase.auth.signInWithPassword({ email: form.email, password: form.password })
+    setMessage(error ? error.message : '')
   }
   return <main className="admin-auth"><a className="admin-back" href="/"><ArrowLeft size={15} /> Back to website</a><Brand />
     <section><p className="eyebrow">Authorized team only</p><h1>Smart Roomz admin</h1><p>Manage listings, leads, calls, and paid room holds.</p>
-      <form onSubmit={submit}><label className="field"><span>Email</span><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required /></label><label className="field"><span>Password</span><input type="password" minLength="8" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required /></label><button className="primary-button wide">{mode === 'signin' ? 'Sign in' : 'Create admin account'}</button></form>
+      <form onSubmit={submit}><label className="field"><span>Email</span><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required /></label>{mode === 'signin' && <label className="field"><span>Password</span><input type="password" minLength="8" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required /></label>}<button className="primary-button wide">{mode === 'signin' ? 'Sign in' : 'Email password-reset link'}</button></form>
       {message && <p className="admin-message">{message}</p>}
-      <button className="text-button" onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setMessage('') }}>{mode === 'signin' ? 'First time? Create the authorized account' : 'Already have an account? Sign in'}</button>
+      <button className="text-button" onClick={() => { setMode(mode === 'signin' ? 'reset' : 'signin'); setMessage('') }}>{mode === 'signin' ? 'Forgot password?' : 'Back to sign in'}</button>
       {session && <button className="text-button" onClick={() => supabase.auth.signOut()}>Sign out of this account</button>}
     </section>
   </main>
 }
 
+function PasswordSetup({ onDone }) {
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [message, setMessage] = useState('')
+  const [saving, setSaving] = useState(false)
+  const submit = async (event) => {
+    event.preventDefault()
+    if (password.length < 8) return setMessage('Use at least 8 characters.')
+    if (password !== confirm) return setMessage('The passwords do not match.')
+    setSaving(true); setMessage('')
+    const { error } = await supabase.auth.updateUser({ password })
+    setSaving(false)
+    if (error) setMessage(error.message)
+    else onDone()
+  }
+  return <main className="admin-auth"><Brand /><section><p className="eyebrow">Secure admin access</p><h1>Choose your password</h1><p>Create a password for your invitation or replace the password you forgot.</p><form onSubmit={submit}><label className="field"><span>New password</span><input type="password" minLength="8" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label><label className="field"><span>Confirm new password</span><input type="password" minLength="8" autoComplete="new-password" value={confirm} onChange={(event) => setConfirm(event.target.value)} required /></label><button className="primary-button wide" disabled={saving}>{saving ? 'Saving…' : 'Save password'}</button></form>{message && <p className="admin-message">{message}</p>}</section></main>
+}
+
 function Dashboard({ session }) {
   const [tab, setTab] = useState('listings')
-  const [data, setData] = useState({ properties: [], applications: [], calls: [], holds: [] })
+  const [data, setData] = useState({ properties: [], applications: [], calls: [], holds: [], members: [] })
   const [editor, setEditor] = useState(null)
   const [message, setMessage] = useState('')
-  const load = async () => {
-    const [properties, applications, calls, holds] = await Promise.all([
+  const load = useCallback(async () => {
+    const [properties, applications, calls, holds, membersResponse] = await Promise.all([
       supabase.from('properties').select('*').order('created_at', { ascending: false }),
       supabase.from('applications').select('*').order('created_at', { ascending: false }),
       supabase.from('call_requests').select('*').order('created_at', { ascending: false }),
       supabase.from('room_holds').select('*').order('created_at', { ascending: false }),
+      fetch('/api/admin-members', { headers: { Authorization: `Bearer ${session.access_token}` } }),
     ])
     const error = [properties, applications, calls, holds].find((result) => result.error)?.error
     if (error) setMessage(error.message)
-    setData({ properties: (properties.data || []).map(fromPropertyRow), applications: applications.data || [], calls: calls.data || [], holds: holds.data || [] })
-  }
-  useEffect(() => { Promise.resolve().then(load) }, [])
+    const membersResult = await membersResponse.json().catch(() => ({ members: [] }))
+    if (!membersResponse.ok) setMessage(membersResult.error || 'Could not load team members.')
+    setData({ properties: (properties.data || []).map(fromPropertyRow), applications: applications.data || [], calls: calls.data || [], holds: holds.data || [], members: membersResult.members || [] })
+  }, [session.access_token])
+  useEffect(() => { Promise.resolve().then(load) }, [load])
   const stats = useMemo(() => ({ available: data.properties.filter((p) => p.status === 'published').length, leads: data.applications.length + data.calls.length, calls: data.calls.filter((c) => c.status === 'new').length, deposits: data.holds.filter((h) => h.status === 'paid').reduce((sum, h) => sum + h.amount_cents, 0) / 100 }), [data])
   const updateStatus = async (table, id, status) => { const { error } = await supabase.from(table).update({ status }).eq('id', id); setMessage(error?.message || 'Updated.'); load() }
   const removeProperty = async (property) => { if (!window.confirm(`Delete ${property.title}? Existing lead and payment history will be preserved.`)) return; const { error } = await supabase.from('properties').delete().eq('id', property.id); setMessage(error?.message || 'Listing deleted.'); load() }
@@ -79,15 +106,31 @@ function Dashboard({ session }) {
     <header className="admin-header"><Brand /><div><span>{session.user.email}</span><a href="/"><ArrowLeft size={15} /> Website</a><button onClick={() => supabase.auth.signOut()}><LogOut size={15} /> Sign out</button></div></header>
     <main><div className="admin-title"><div><p className="eyebrow">Operations dashboard</p><h1>Welcome back</h1><p>Everything your team needs to manage rooms and renter interest.</p></div>{tab === 'listings' && <button className="primary-button" onClick={() => setEditor({ ...blankProperty })}><Plus size={16} /> Add listing</button>}</div>
       <section className="admin-stats"><Stat icon={Building2} label="Published rooms" value={stats.available} /><Stat icon={Users} label="Total leads" value={stats.leads} /><Stat icon={PhoneCall} label="New call requests" value={stats.calls} /><Stat icon={CreditCard} label="Paid deposits" value={`$${stats.deposits.toLocaleString()}`} /></section>
-      <nav className="admin-tabs">{[['listings','Listings'],['applications','Applications'],['calls','Call requests'],['holds','Deposits & holds']].map(([key,label]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}<span>{data[key === 'listings' ? 'properties' : key].length}</span></button>)}</nav>
+      <nav className="admin-tabs">{[['listings','Listings'],['applications','Applications'],['calls','Call requests'],['holds','Deposits & holds'],['members','Team members']].map(([key,label]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}<span>{data[key === 'listings' ? 'properties' : key].length}</span></button>)}</nav>
       {message && <div className="admin-banner">{message}<button onClick={() => setMessage('')}>×</button></div>}
       {tab === 'listings' && <Listings items={data.properties} onEdit={(p) => setEditor({ ...p })} onDelete={removeProperty} />}
       {tab === 'applications' && <Leads items={data.applications} type="applications" onStatus={(id, status) => updateStatus('applications', id, status)} />}
       {tab === 'calls' && <Leads items={data.calls} type="calls" onStatus={(id, status) => updateStatus('call_requests', id, status)} />}
       {tab === 'holds' && <Holds items={data.holds} onRelease={releaseHold} />}
+      {tab === 'members' && <TeamMembers members={data.members} session={session} onAdded={(text) => { setMessage(text); load() }} />}
     </main>
     {editor && <PropertyEditor property={editor} onClose={() => setEditor(null)} onSaved={() => { setEditor(null); setMessage('Listing saved.'); load() }} />}
   </div>
+}
+
+function TeamMembers({ members, session, onAdded }) {
+  const [form, setForm] = useState({ fullName: '', email: '' })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const submit = async (event) => {
+    event.preventDefault(); setSaving(true); setError('')
+    const response = await fetch('/api/admin-members', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify(form) })
+    const result = await response.json()
+    setSaving(false)
+    if (!response.ok) return setError(result.error || 'Could not add this member.')
+    setForm({ fullName: '', email: '' }); onAdded(result.message)
+  }
+  return <div className="team-management"><section><div className="team-heading"><span><UserPlus /></span><div><h2>Add an administrator</h2><p>They will receive a secure invitation and can manage listings, leads, calls, and deposits.</p></div></div><form className="team-form" onSubmit={submit}><label className="field"><span>Full name</span><input value={form.fullName} onChange={(event) => setForm({ ...form, fullName: event.target.value })} placeholder="Team member name" /></label><label className="field"><span>Email</span><input type="email" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="member@example.com" /></label><button className="primary-button" disabled={saving}><Mail size={15} /> {saving ? 'Sending…' : 'Send admin invitation'}</button>{error && <p className="admin-message">{error}</p>}</form></section><section><h2>Current administrators</h2><div className="member-list">{members.map((member) => <article key={member.id}><span><Users /></span><div><strong>{member.full_name || 'Smart Roomz administrator'}</strong><a href={`mailto:${member.email}`}>{member.email}</a></div><small>Admin</small></article>)}</div></section></div>
 }
 
 function Stat({ icon: Icon, label, value }) { return <article><Icon size={20} /><div><strong>{value}</strong><span>{label}</span></div></article> }
