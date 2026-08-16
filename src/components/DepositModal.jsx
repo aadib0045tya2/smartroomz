@@ -73,7 +73,7 @@ export default function DepositModal({ property, onClose }) {
   }
 
   return <Modal onClose={onClose} className="form-modal deposit-modal" label="Hold room deposit">
-    {status === 'paid' ? <div className="success-state"><CheckCircle2 size={50} /><p className="eyebrow">Room held</p><h2>Your $175 deposit was received.</h2><p>We created your customer account with this email. Use a one-time email code to see this room hold and your Square receipt.</p><a className="primary-button receipt-link" href="/account">Open my account</a>{message && <a className="secondary-button receipt-link" href={message} target="_blank" rel="noreferrer">View Square receipt</a>}<button className="text-button" onClick={onClose}>Done</button></div> : <>
+    {status === 'paid' ? <div className="success-state"><CheckCircle2 size={50} /><p className="eyebrow">Room held</p><h2>Your $175 deposit was received.</h2><p>We created your customer account with this email. Use its secure one-time sign-in to see this room hold and your Square receipt.</p><a className="primary-button receipt-link" href="/account">Open my account</a>{message && <a className="secondary-button receipt-link" href={message} target="_blank" rel="noreferrer">View Square receipt</a>}<button className="text-button" onClick={onClose}>Done</button></div> : <>
       <p className="eyebrow">Secure room hold</p><h2>Hold {property.title} for $175</h2>
       <p className="form-intro">The amount is fixed on our server and processed securely by Square. Your card details never pass through Smart Roomz servers.</p>
       <form className="form-stack" onSubmit={submit}>

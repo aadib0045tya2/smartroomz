@@ -40,10 +40,10 @@ function OtpLogin() {
   const sendCode = async (event) => {
     event.preventDefault(); setBusy(true); setMessage('')
     const normalized = email.trim().toLowerCase()
-    const { error } = await supabase.auth.signInWithOtp({ email: normalized, options: { shouldCreateUser: true } })
+    const { error } = await supabase.auth.signInWithOtp({ email: normalized, options: { shouldCreateUser: true, emailRedirectTo: `${window.location.origin}/account` } })
     setBusy(false)
     if (error) return setMessage(error.message)
-    setEmail(normalized); setStep('code'); setMessage('We sent a 6-digit login code to your email.')
+    setEmail(normalized); setStep('code'); setMessage('We sent a secure sign-in email. Open its one-time link, or enter the 6-digit code if one is shown.')
   }
 
   const verifyCode = async (event) => {
@@ -55,8 +55,8 @@ function OtpLogin() {
 
   return <section className="account-auth-card">
     <div className="account-icon"><Mail /></div><p className="eyebrow">Password-free login</p><h1>See your Smart Roomz activity</h1>
-    <p>Use the same email you entered for your deposit or call request. We’ll email you a one-time code—no password needed.</p>
-    {step === 'email' ? <form onSubmit={sendCode}><label className="field"><span>Email address</span><input type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label><button className="primary-button wide" disabled={busy}>{busy ? 'Sending…' : 'Email my login code'}</button></form> : <form onSubmit={verifyCode}><label className="field"><span>6-digit code</span><input className="otp-input" required inputMode="numeric" autoComplete="one-time-code" maxLength="6" pattern="[0-9]{6}" value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))} placeholder="000000" /></label><button className="primary-button wide" disabled={busy || code.length !== 6}>{busy ? 'Checking…' : 'Open my account'}</button><button type="button" className="text-button" onClick={() => { setStep('email'); setCode(''); setMessage('') }}>Use a different email</button></form>}
+    <p>Use the same email you entered for your deposit or call request. We’ll email you a one-time sign-in—no password needed.</p>
+    {step === 'email' ? <form onSubmit={sendCode}><label className="field"><span>Email address</span><input type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label><button className="primary-button wide" disabled={busy}>{busy ? 'Sending…' : 'Email my secure login'}</button></form> : <form onSubmit={verifyCode}><label className="field"><span>6-digit code</span><input className="otp-input" required inputMode="numeric" autoComplete="one-time-code" maxLength="6" pattern="[0-9]{6}" value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))} placeholder="000000" /></label><button className="primary-button wide" disabled={busy || code.length !== 6}>{busy ? 'Checking…' : 'Open my account'}</button><button type="button" className="text-button" onClick={() => { setStep('email'); setCode(''); setMessage('') }}>Use a different email</button></form>}
     {message && <p className={message.startsWith('We sent') ? 'account-message success' : 'account-message'}>{message}</p>}
   </section>
 }
