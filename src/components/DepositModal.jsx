@@ -31,6 +31,8 @@ export default function DepositModal({ property, onClose }) {
   const [agreed, setAgreed] = useState(false)
   const [status, setStatus] = useState(configured ? 'loading' : 'unconfigured')
   const [message, setMessage] = useState('')
+  const holdDeposit = Number(property.holdDeposit || 175)
+  const holdDepositLabel = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(holdDeposit)
   const update = (key, value) => setForm((current) => ({ ...current, [key]: value }))
 
   useEffect(() => {
@@ -49,7 +51,7 @@ export default function DepositModal({ property, onClose }) {
   const submit = async (event) => {
     event.preventDefault()
     if (!form.name || !/^\S+@\S+\.\S+$/.test(form.email) || form.phone.replace(/\D/g, '').length < 10 || !agreed) {
-      setMessage('Enter valid contact details and acknowledge the $175 room hold.')
+      setMessage(`Enter valid contact details and acknowledge the ${holdDepositLabel} room hold.`)
       return
     }
     setStatus('processing'); setMessage('')
@@ -58,7 +60,7 @@ export default function DepositModal({ property, onClose }) {
       const phoneDigits = form.phone.replace(/\D/g, '')
       const billingPhone = phoneDigits.length === 10 ? `+1${phoneDigits}` : (form.phone.trim().startsWith('+') && phoneDigits.length >= 8 && phoneDigits.length <= 15) || (phoneDigits.length === 11 && phoneDigits.startsWith('1')) ? `+${phoneDigits}` : undefined
       const tokenResult = await card.tokenize({
-        amount: '175.00', currencyCode: 'USD', intent: 'CHARGE', customerInitiated: true,
+        amount: holdDeposit.toFixed(2), currencyCode: 'USD', intent: 'CHARGE', customerInitiated: true,
         sellerKeyedIn: false, billingContact: { givenName: nameParts[0], familyName: nameParts.slice(1).join(' ') || undefined, email: form.email.trim(), phone: billingPhone },
       })
       if (tokenResult.status !== 'OK') throw new Error(squareErrorMessage(tokenResult))
@@ -73,17 +75,17 @@ export default function DepositModal({ property, onClose }) {
   }
 
   return <Modal onClose={onClose} className="form-modal deposit-modal" label="Hold room deposit">
-    {status === 'paid' ? <div className="success-state"><CheckCircle2 size={50} /><p className="eyebrow">Room held</p><h2>Your $175 deposit was received.</h2><p>We created your customer account with this email. Use its secure one-time sign-in to see this room hold and your Square receipt.</p><a className="primary-button receipt-link" href="/account">Open my account</a>{message && <a className="secondary-button receipt-link" href={message} target="_blank" rel="noreferrer">View Square receipt</a>}<button className="text-button" onClick={onClose}>Done</button></div> : <>
-      <p className="eyebrow">Secure room hold</p><h2>Hold {property.title} for $175</h2>
+    {status === 'paid' ? <div className="success-state"><CheckCircle2 size={50} /><p className="eyebrow">Room held</p><h2>Your {holdDepositLabel} deposit was received.</h2><p>We created your customer account with this email. Use its secure one-time sign-in to see this room hold and your Square receipt.</p><a className="primary-button receipt-link" href="/account">Open my account</a>{message && <a className="secondary-button receipt-link" href={message} target="_blank" rel="noreferrer">View Square receipt</a>}<button className="text-button" onClick={onClose}>Done</button></div> : <>
+      <p className="eyebrow">Secure room hold</p><h2>Hold {property.title} for {holdDepositLabel}</h2>
       <p className="form-intro">The amount is fixed on our server and processed securely by Square. Your card details never pass through Smart Roomz servers.</p>
       <form className="form-stack" onSubmit={submit}>
         <label className="field"><span>Full name</span><input value={form.name} onChange={(e) => update('name', e.target.value)} /></label>
         <label className="field"><span>Email</span><input type="email" value={form.email} onChange={(e) => update('email', e.target.value)} /></label>
         <label className="field"><span>Phone</span><input type="tel" value={form.phone} onChange={(e) => update('phone', e.target.value)} /></label>
-        <label className="check-row"><input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} /> I understand this $175 deposit holds the selected room and Smart Roomz will contact me with the next steps.</label>
-        {status === 'unconfigured' ? <div className="setup-notice"><strong>Square setup is the last step.</strong><span>Add the Square sandbox credentials in Vercel to enable card entry.</span></div> : <div className="square-card-wrap"><span>Card details</span><div ref={cardRef} id="square-card" /></div>}
+        <label className="check-row"><input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} /> I understand this {holdDepositLabel} deposit holds the selected room and Smart Roomz will contact me with the next steps.</label>
+        {status === 'unconfigured' ? <div className="setup-notice"><strong>Square setup is the last step.</strong><span>Add the matching Square credentials in Vercel to enable card entry.</span></div> : <div className="square-card-wrap"><span>Card details</span><div ref={cardRef} id="square-card" /></div>}
         {message && status !== 'unconfigured' && <p className="form-error">{message}</p>}
-        <button className="primary-button wide" disabled={status !== 'ready'}>{status === 'processing' ? 'Processing…' : status === 'loading' ? 'Loading secure payment…' : 'Pay $175 and hold room'}</button>
+        <button className="primary-button wide" disabled={status !== 'ready'}>{status === 'processing' ? 'Processing…' : status === 'loading' ? 'Loading secure payment…' : `Pay ${holdDepositLabel} and hold room`}</button>
         <p className="secure-note"><ShieldCheck size={14} /> Secure payment powered by Square</p>
       </form>
     </>}

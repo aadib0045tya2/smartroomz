@@ -20,6 +20,7 @@ export const toPropertyRow = (property) => ({
   title: property.title, area: property.area, city: property.city, state: property.state, zip: property.zip,
   images: property.images, weekly_price: Number(property.weeklyPrice), biweekly_price: Number(property.biweeklyPrice),
   monthly_price: Number(property.monthlyPrice), security_deposit: Number(property.deposit), application_fee: Number(property.applicationFee),
+  hold_deposit_cents: Math.round(Number(property.holdDeposit) * 100),
   room_type: property.roomType, availability: property.availability, earliest_move_in_date: property.earliestMoveInDate || null,
   amenities: property.amenities, description: property.description, rating: Number(property.rating), featured: property.featured,
   latitude: property.latitude ? Number(property.latitude) : null, longitude: property.longitude ? Number(property.longitude) : null,

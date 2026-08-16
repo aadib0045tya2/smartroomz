@@ -1,4 +1,4 @@
-export const money = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount)
+export const money = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(amount)
 
 export function getRent(property, plan) {
   return property[`${plan}Price`] ?? property.weeklyPrice
