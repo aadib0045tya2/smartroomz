@@ -7,6 +7,12 @@ const locationId = import.meta.env.VITE_SQUARE_LOCATION_ID
 const environment = import.meta.env.VITE_SQUARE_ENVIRONMENT || 'sandbox'
 const configured = Boolean(appId && locationId)
 
+function squareErrorMessage(error) {
+  const details = error?.errors || error?.errorList || []
+  if (details.length) return details.map((item) => [item.field, item.message || item.type].filter(Boolean).join(': ')).join(' ')
+  return [error?.name, error?.message].filter(Boolean).join(': ') || 'Square could not tokenize the card.'
+}
+
 function loadSquare() {
   if (window.Square) return Promise.resolve()
   return new Promise((resolve, reject) => {
@@ -48,11 +54,12 @@ export default function DepositModal({ property, onClose }) {
     }
     setStatus('processing'); setMessage('')
     try {
+      const nameParts = form.name.trim().split(/\s+/)
       const tokenResult = await card.tokenize({
         amount: '175.00', currencyCode: 'USD', intent: 'CHARGE', customerInitiated: true,
-        sellerKeyedIn: false, billingContact: { givenName: form.name, email: form.email, phone: form.phone },
+        sellerKeyedIn: false, billingContact: { givenName: nameParts[0], familyName: nameParts.slice(1).join(' ') || undefined, email: form.email.trim(), phone: form.phone.trim() },
       })
-      if (tokenResult.status !== 'OK') throw new Error(tokenResult.errors?.[0]?.message || 'Card details could not be verified.')
+      if (tokenResult.status !== 'OK') throw new Error(squareErrorMessage(tokenResult))
       const response = await fetch('/api/create-deposit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sourceId: tokenResult.token, propertyId: property.id, ...form, idempotencyKey: crypto.randomUUID() }),
@@ -60,7 +67,7 @@ export default function DepositModal({ property, onClose }) {
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Payment could not be completed.')
       setStatus('paid'); setMessage(result.receiptUrl || '')
-    } catch (error) { setMessage(error.message); setStatus('ready') }
+    } catch (error) { setMessage(squareErrorMessage(error)); setStatus('ready') }
   }
 
   return <Modal onClose={onClose} className="form-modal deposit-modal" label="Hold room deposit">
