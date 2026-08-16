@@ -22,6 +22,7 @@ export default function DepositModal({ property, onClose }) {
   const cardRef = useRef(null)
   const [card, setCard] = useState(null)
   const [form, setForm] = useState({ name: '', email: '', phone: '' })
+  const [agreed, setAgreed] = useState(false)
   const [status, setStatus] = useState(configured ? 'loading' : 'unconfigured')
   const [message, setMessage] = useState('')
   const update = (key, value) => setForm((current) => ({ ...current, [key]: value }))
@@ -41,8 +42,8 @@ export default function DepositModal({ property, onClose }) {
 
   const submit = async (event) => {
     event.preventDefault()
-    if (!form.name || !/^\S+@\S+\.\S+$/.test(form.email) || form.phone.replace(/\D/g, '').length < 10) {
-      setMessage('Enter your name, a valid email, and a valid phone number.')
+    if (!form.name || !/^\S+@\S+\.\S+$/.test(form.email) || form.phone.replace(/\D/g, '').length < 10 || !agreed) {
+      setMessage('Enter valid contact details and acknowledge the $175 room hold.')
       return
     }
     setStatus('processing'); setMessage('')
@@ -70,6 +71,7 @@ export default function DepositModal({ property, onClose }) {
         <label className="field"><span>Full name</span><input value={form.name} onChange={(e) => update('name', e.target.value)} /></label>
         <label className="field"><span>Email</span><input type="email" value={form.email} onChange={(e) => update('email', e.target.value)} /></label>
         <label className="field"><span>Phone</span><input type="tel" value={form.phone} onChange={(e) => update('phone', e.target.value)} /></label>
+        <label className="check-row"><input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} /> I understand this $175 deposit holds the selected room and Smart Roomz will contact me with the next steps.</label>
         {status === 'unconfigured' ? <div className="setup-notice"><strong>Square setup is the last step.</strong><span>Add the Square sandbox credentials in Vercel to enable card entry.</span></div> : <div className="square-card-wrap"><span>Card details</span><div ref={cardRef} id="square-card" /></div>}
         {message && status !== 'unconfigured' && <p className="form-error">{message}</p>}
         <button className="primary-button wide" disabled={status !== 'ready'}>{status === 'processing' ? 'Processing…' : status === 'loading' ? 'Loading secure payment…' : 'Pay $175 and hold room'}</button>
