@@ -55,9 +55,11 @@ export default function DepositModal({ property, onClose }) {
     setStatus('processing'); setMessage('')
     try {
       const nameParts = form.name.trim().split(/\s+/)
+      const phoneDigits = form.phone.replace(/\D/g, '')
+      const billingPhone = phoneDigits.length === 10 ? `+1${phoneDigits}` : (form.phone.trim().startsWith('+') && phoneDigits.length >= 8 && phoneDigits.length <= 15) || (phoneDigits.length === 11 && phoneDigits.startsWith('1')) ? `+${phoneDigits}` : undefined
       const tokenResult = await card.tokenize({
         amount: '175.00', currencyCode: 'USD', intent: 'CHARGE', customerInitiated: true,
-        sellerKeyedIn: false, billingContact: { givenName: nameParts[0], familyName: nameParts.slice(1).join(' ') || undefined, email: form.email.trim(), phone: form.phone.trim() },
+        sellerKeyedIn: false, billingContact: { givenName: nameParts[0], familyName: nameParts.slice(1).join(' ') || undefined, email: form.email.trim(), phone: billingPhone },
       })
       if (tokenResult.status !== 'OK') throw new Error(squareErrorMessage(tokenResult))
       const response = await fetch('/api/create-deposit', {
