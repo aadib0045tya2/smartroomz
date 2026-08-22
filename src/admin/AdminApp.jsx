@@ -1,7 +1,8 @@
-import { ArrowLeft, Building2, CalendarClock, CreditCard, LogOut, Mail, Pencil, PhoneCall, Plus, RefreshCcw, Save, Trash2, UserPlus, Users } from 'lucide-react'
+import { ArrowLeft, BarChart3, Building2, CalendarClock, CreditCard, LogOut, Mail, Pencil, PhoneCall, Plus, RefreshCcw, Save, Trash2, UserPlus, Users } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Brand from '../components/Brand.jsx'
 import { fromPropertyRow, supabase, toPropertyRow } from '../lib/supabase.js'
+import CallingDashboard from './CallingDashboard.jsx'
 
 const blankProperty = {
   id: '', title: '', area: '', city: 'Atlanta', state: 'GA', zip: '', images: [], weeklyPrice: 200, biweeklyPrice: 400,
@@ -80,23 +81,24 @@ function PasswordSetup({ onDone }) {
 
 function Dashboard({ session }) {
   const [tab, setTab] = useState('listings')
-  const [data, setData] = useState({ properties: [], applications: [], calls: [], holds: [], members: [] })
+  const [data, setData] = useState({ properties: [], applications: [], calls: [], holds: [], members: [], vapiCalls: [] })
   const [editor, setEditor] = useState(null)
   const [message, setMessage] = useState('')
   const [republishingId, setRepublishingId] = useState('')
   const load = useCallback(async () => {
-    const [properties, applications, calls, holds, membersResponse] = await Promise.all([
+    const [properties, applications, calls, holds, vapiCalls, membersResponse] = await Promise.all([
       supabase.from('properties').select('*').order('created_at', { ascending: false }),
       supabase.from('applications').select('*').order('created_at', { ascending: false }),
       supabase.from('call_requests').select('*').order('created_at', { ascending: false }),
       supabase.from('room_holds').select('*').order('created_at', { ascending: false }),
+      supabase.from('vapi_calls').select('*').order('started_at', { ascending: false }).limit(1000),
       fetch('/api/admin-members', { headers: { Authorization: `Bearer ${session.access_token}` } }),
     ])
-    const error = [properties, applications, calls, holds].find((result) => result.error)?.error
+    const error = [properties, applications, calls, holds, vapiCalls].find((result) => result.error)?.error
     if (error) setMessage(error.message)
     const membersResult = await membersResponse.json().catch(() => ({ members: [] }))
     if (!membersResponse.ok) setMessage(membersResult.error || 'Could not load team members.')
-    setData({ properties: (properties.data || []).map(fromPropertyRow), applications: applications.data || [], calls: calls.data || [], holds: holds.data || [], members: membersResult.members || [] })
+    setData({ properties: (properties.data || []).map(fromPropertyRow), applications: applications.data || [], calls: calls.data || [], holds: holds.data || [], members: membersResult.members || [], vapiCalls: vapiCalls.data || [] })
   }, [session.access_token])
   useEffect(() => { Promise.resolve().then(load) }, [load])
   const stats = useMemo(() => ({ available: data.properties.filter((p) => p.status === 'published').length, leads: data.applications.length + data.calls.length, calls: data.calls.filter((c) => c.status === 'new').length, deposits: data.holds.filter((h) => h.status === 'paid').reduce((sum, h) => sum + h.amount_cents, 0) / 100 }), [data])
@@ -115,11 +117,12 @@ function Dashboard({ session }) {
     <header className="admin-header"><Brand /><div><span>{session.user.email}</span><a href="/"><ArrowLeft size={15} /> Website</a><button onClick={() => supabase.auth.signOut()}><LogOut size={15} /> Sign out</button></div></header>
     <main><div className="admin-title"><div><p className="eyebrow">Operations dashboard</p><h1>Welcome back</h1><p>Everything your team needs to manage rooms and renter interest.</p></div>{tab === 'listings' && <button className="primary-button" onClick={() => setEditor({ ...blankProperty })}><Plus size={16} /> Add listing</button>}</div>
       <section className="admin-stats"><Stat icon={Building2} label="Published rooms" value={stats.available} /><Stat icon={Users} label="Total leads" value={stats.leads} /><Stat icon={PhoneCall} label="New call requests" value={stats.calls} /><Stat icon={CreditCard} label="Paid deposits" value={`$${stats.deposits.toLocaleString()}`} /></section>
-      <nav className="admin-tabs">{[['listings','Listings'],['applications','Applications'],['calls','Call requests'],['holds','Deposits & holds'],['members','Team members']].map(([key,label]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}<span>{data[key === 'listings' ? 'properties' : key].length}</span></button>)}</nav>
+      <nav className="admin-tabs">{[['listings','Listings'],['applications','Applications'],['calls','Call requests'],['calling','Calling dashboard'],['holds','Deposits & holds'],['members','Team members']].map(([key,label]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{key === 'calling' && <BarChart3 size={14} />}{label}<span>{data[key === 'listings' ? 'properties' : key === 'calling' ? 'vapiCalls' : key].length}</span></button>)}</nav>
       {message && <div className="admin-banner">{message}<button onClick={() => setMessage('')}>×</button></div>}
       {tab === 'listings' && <Listings items={data.properties} onEdit={(p) => setEditor({ ...p })} onDelete={removeProperty} onRepublish={republishProperty} republishingId={republishingId} />}
       {tab === 'applications' && <Leads items={data.applications} type="applications" onStatus={(id, status) => updateStatus('applications', id, status)} />}
       {tab === 'calls' && <Leads items={data.calls} type="calls" onStatus={(id, status) => updateStatus('call_requests', id, status)} />}
+      {tab === 'calling' && <CallingDashboard calls={data.vapiCalls} session={session} onReload={load} onMessage={setMessage} />}
       {tab === 'holds' && <Holds items={data.holds} onRelease={releaseHold} />}
       {tab === 'members' && <TeamMembers members={data.members} session={session} onAdded={(text) => { setMessage(text); load() }} />}
     </main>
