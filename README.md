@@ -46,6 +46,8 @@ user-verified 22-call production export. Older Vapi traffic was test traffic and
 is never synchronized. Client conversion also excludes `+1 404-951-3737`
 (Dossy) and `+91 8958875538` (owner test calls). Appointment-creation tool calls
 are the strongest booking signal, and transfers to Dossy are tracked independently.
+The Vapi transfer metric represents live phone transfers only. Dossy SMS delivery
+analytics must come from GHL/Twilio message records and are not inferred from calls.
 
 ## Validation
 
