@@ -49,7 +49,12 @@ export default async function handler(req, res) {
       const { error } = await db.from('vapi_calls').upsert(rows.slice(index, index + 100), { onConflict: 'id' })
       if (error) throw error
     }
-    return res.status(200).json({ success: true, fetched: calls.length, synchronized: rows.length, from: start.toISOString(), through: now.toISOString() })
+    const { count: removedBeforeBaseline, error: cleanupError } = await db
+      .from('vapi_calls')
+      .delete({ count: 'exact' })
+      .lt('started_at', EARLIEST_SYNC)
+    if (cleanupError) throw cleanupError
+    return res.status(200).json({ success: true, fetched: calls.length, synchronized: rows.length, removedBeforeBaseline, from: start.toISOString(), through: now.toISOString() })
   } catch (error) {
     console.error('Vapi synchronization failed:', error)
     return res.status(502).json({ error: error.message || 'Vapi synchronization failed.' })
