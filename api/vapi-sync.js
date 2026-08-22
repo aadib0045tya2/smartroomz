@@ -2,7 +2,9 @@ import { createClient } from '@supabase/supabase-js'
 import { mapVapiCall } from '../server/vapiCalls.js'
 
 const VAPI_URL = 'https://api.vapi.ai/call'
-const EARLIEST_SYNC = '2026-08-17T00:00:00.000Z'
+// The user-verified production baseline: first call in the 22-call export.
+// Everything before this timestamp was test traffic and must not enter reporting.
+const EARLIEST_SYNC = '2026-08-20T18:58:30.249Z'
 const MAX_WINDOW_DEPTH = 18
 
 export const config = { maxDuration: 60 }

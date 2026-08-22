@@ -41,9 +41,11 @@ VAPI_PRIVATE_KEY=<existing Vapi private key>
 CRON_SECRET=<long random value>
 ```
 
-Client conversion automatically excludes `+1 404-951-3737` (Dossy) and
-`+91 8958875538` (owner test calls). Appointment-creation tool calls are the
-strongest booking signal, and transfers to Dossy are tracked independently.
+Reporting begins at `2026-08-20T18:58:30.249Z`, the first record in the
+user-verified 22-call production export. Older Vapi traffic was test traffic and
+is never synchronized. Client conversion also excludes `+1 404-951-3737`
+(Dossy) and `+91 8958875538` (owner test calls). Appointment-creation tool calls
+are the strongest booking signal, and transfers to Dossy are tracked independently.
 
 ## Validation
 
