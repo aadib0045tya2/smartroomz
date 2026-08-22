@@ -1,5 +1,5 @@
 import { CalendarCheck, DollarSign, Headphones, PhoneCall, RefreshCcw, Route, Users, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 const OUTCOMES = {
   appointment_booked: 'Appointment booked',
@@ -84,12 +84,41 @@ export default function CallingDashboard({ calls, session, onReload, onMessage }
     <section className="call-metrics"><Metric icon={PhoneCall} label="Calls" value={metrics.calls} /><Metric icon={Users} label="Unique callers" value={metrics.unique} /><Metric icon={CalendarCheck} label="Appointments" value={metrics.booked} detail={`${metrics.rate.toFixed(1)}% booking rate`} /><Metric icon={Route} label="Live transfers to Dossy" value={metrics.transferred} detail="Excludes SMS alerts" /><Metric icon={Headphones} label="Recordings" value={metrics.recordings} detail="Click Listen below" /><Metric icon={DollarSign} label="Vapi cost" value={`$${metrics.cost.toFixed(2)}`} /></section>
     <section className="call-charts"><article><h3>Automated outcome signals</h3><p className="chart-caveat">Intent labels come from Vapi analysis and require human review. Bookings use appointment evidence.</p><div className="outcome-chart">{outcomeCounts.map((item) => <div key={item.key}><span>{OUTCOMES[item.key]}</span><div><i style={{ width: `${(item.count / maxOutcome) * 100}%`, background: COLORS[item.key] }} /></div><strong>{item.count}</strong></div>)}{!outcomeCounts.length && <p>No calls match these filters.</p>}</div></article><article><h3>Calls and bookings by day</h3><div className="daily-chart">{daily.map((item) => <div key={item.day} title={`${item.day}: ${item.calls} calls, ${item.booked} booked`}><div><i style={{ height: `${Math.max(4, (item.calls / maxDaily) * 100)}%` }} /><b style={{ height: `${(item.booked / maxDaily) * 100}%` }} /></div><span>{new Date(`${item.day}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span></div>)}</div><div className="chart-legend"><span><i /> Calls</span><span><i /> Booked</span></div></article></section>
     <div className="admin-table-wrap call-table"><table className="admin-table"><thead><tr><th>Caller</th><th>Date</th><th>Duration</th><th>Outcome</th><th>Booked</th><th>Live transferred</th><th>Recording</th><th>Cost</th><th /></tr></thead><tbody>{filtered.map((call) => <tr key={call.id}><td><strong>{call.customer_name || shortPhone(call.caller_number)}</strong><small>{call.customer_name ? shortPhone(call.caller_number) : call.is_test ? 'Test caller' : 'Client'}</small></td><td>{new Date(call.started_at).toLocaleString()}</td><td>{formatDuration(call.duration_seconds)}</td><td><span className="call-outcome"><i style={{ background: COLORS[call.reviewed_category] }} />{OUTCOMES[call.reviewed_category] || 'Other / unclear'}</span></td><td>{call.appointment_booked ? 'Yes' : '—'}</td><td>{call.transferred_to_dossy ? 'Yes' : '—'}</td><td>{call.recording_url ? <button className="table-button recording-button" onClick={() => setSelected(call)}><Headphones size={13} /> Listen</button> : '—'}</td><td>${Number(call.cost || 0).toFixed(2)}</td><td><button className="table-button" onClick={() => setSelected(call)}>Details</button></td></tr>)}</tbody></table>{!filtered.length && <p className="call-empty">No calls match these filters.</p>}</div>
-    {selected && <CallDetails call={selected} onClose={() => setSelected(null)} />}
+    {selected && <CallDetails call={selected} session={session} onClose={() => setSelected(null)} />}
   </div>
 }
 
 function Metric({ icon: Icon, label, value, detail }) { return <article><Icon /><div><strong>{value}</strong><span>{label}</span>{detail && <small>{detail}</small>}</div></article> }
 
-function CallDetails({ call, onClose }) {
-  return <div className="call-detail-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}><section className="call-detail"><header><div><p className="eyebrow">Vapi call record</p><h2>{call.customer_name || shortPhone(call.caller_number)}</h2></div><button onClick={onClose} aria-label="Close"><X /></button></header><div className="call-detail-grid"><span><small>Caller</small><strong>{shortPhone(call.caller_number)}</strong></span><span><small>Started</small><strong>{new Date(call.started_at).toLocaleString()}</strong></span><span><small>Duration</small><strong>{formatDuration(call.duration_seconds)}</strong></span><span><small>Outcome</small><strong>{OUTCOMES[call.reviewed_category]}</strong></span></div>{call.recording_url && <div className="call-recording"><h3>Recording</h3><audio controls preload="none" src={call.recording_url} /></div>}<div><h3>Summary</h3><p>{call.summary || 'No summary was generated.'}</p></div><details><summary>Transcript</summary><pre>{call.transcript || 'No transcript available.'}</pre></details></section></div>
+function CallDetails({ call, session, onClose }) {
+  const [recordingSrc, setRecordingSrc] = useState('')
+  const [recordingError, setRecordingError] = useState('')
+
+  useEffect(() => {
+    if (!call.recording_url) return undefined
+    const controller = new AbortController()
+    let objectUrl = ''
+
+    async function loadRecording() {
+      try {
+        const response = await fetch(`/api/vapi-recording?id=${encodeURIComponent(call.id)}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          signal: controller.signal,
+        })
+        if (!response.ok) throw new Error('Recording could not be loaded.')
+        objectUrl = URL.createObjectURL(await response.blob())
+        setRecordingSrc(objectUrl)
+      } catch (error) {
+        if (error.name !== 'AbortError') setRecordingError(error.message)
+      }
+    }
+
+    loadRecording()
+    return () => {
+      controller.abort()
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [call.id, call.recording_url, session.access_token])
+
+  return <div className="call-detail-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}><section className="call-detail"><header><div><p className="eyebrow">Vapi call record</p><h2>{call.customer_name || shortPhone(call.caller_number)}</h2></div><button onClick={onClose} aria-label="Close"><X /></button></header><div className="call-detail-grid"><span><small>Caller</small><strong>{shortPhone(call.caller_number)}</strong></span><span><small>Started</small><strong>{new Date(call.started_at).toLocaleString()}</strong></span><span><small>Duration</small><strong>{formatDuration(call.duration_seconds)}</strong></span><span><small>Outcome</small><strong>{OUTCOMES[call.reviewed_category]}</strong></span></div>{call.recording_url && <div className="call-recording"><h3>Recording</h3>{recordingSrc ? <audio controls preload="metadata" src={recordingSrc} /> : <p>{recordingError || 'Loading recording…'}</p>}</div>}<div><h3>Summary</h3><p>{call.summary || 'No summary was generated.'}</p></div><details><summary>Transcript</summary><pre>{call.transcript || 'No transcript available.'}</pre></details></section></div>
 }
