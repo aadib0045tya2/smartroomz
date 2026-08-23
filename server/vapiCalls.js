@@ -27,6 +27,40 @@ function hasAppointmentTool(toolCalls) {
   return toolCalls.some(({ name }) => /create.*appointment|appointment.*create/i.test(name))
 }
 
+function parseToolResult(value) {
+  if (value && typeof value === 'object') return value
+  if (typeof value !== 'string' || !value.trim()) return null
+  try { return JSON.parse(value) } catch { return null }
+}
+
+function appointmentDetailsFrom(call) {
+  const messages = [...(call.messages || []), ...(call.artifact?.messages || [])]
+  const toolNames = new Map()
+  let resolved = null
+  let created = null
+
+  for (const message of messages) {
+    for (const toolCall of message.toolCalls || message.tool_calls || []) {
+      const fn = toolCall.function || toolCall
+      if (toolCall.id) toolNames.set(toolCall.id, fn.name || '')
+    }
+  }
+
+  for (const message of messages) {
+    const name = message.name || toolNames.get(message.toolCallId) || ''
+    const result = parseToolResult(message.result)
+    if (!result) continue
+    if (/resolveSmartRoomzVisitDateTime/i.test(name) && result.ok) resolved = result
+    if (/createSmartRoomzFlexibleAppointment/i.test(name) && result.accepted) created = result
+  }
+
+  return {
+    startTime: created?.startTime || resolved?.startTime || null,
+    dateText: resolved?.displayDate || null,
+    timeText: resolved?.displayTime || null,
+  }
+}
+
 function hasDossyTransfer(call, toolCalls) {
   if (normalizePhone(call.forwardedPhoneNumber) === DOSSY_NUMBER) return true
   if ((call.artifact?.transfers || []).some((transfer) => normalizePhone(transfer.destination?.number || transfer.number) === DOSSY_NUMBER)) return true
@@ -50,6 +84,7 @@ export function mapVapiCall(call) {
   const caller = normalizePhone(call.customer?.number || call.customerNumber)
   const transferred = hasDossyTransfer(call, toolCalls)
   const booked = hasAppointmentTool(toolCalls) || structured.appointmentBooked === true || structured.callOutcome === 'appointment_booked'
+  const appointment = appointmentDetailsFrom(call)
   const startedAt = call.startedAt || call.createdAt || new Date().toISOString()
   const endedAt = call.endedAt || null
   const duration = endedAt ? Math.max(0, Math.round((new Date(endedAt) - new Date(startedAt)) / 1000)) : 0
@@ -73,15 +108,15 @@ export function mapVapiCall(call) {
     is_test: TEST_NUMBERS.has(caller),
     appointment_booked: booked,
     appointment_requested: structured.appointmentRequested === true,
-    appointment_date_text: structured.appointmentDate || null,
-    appointment_time_text: structured.appointmentTime || null,
+    appointment_date_text: appointment.dateText || structured.appointmentDate || null,
+    appointment_time_text: appointment.timeText || structured.appointmentTime || null,
     interested: typeof structured.interested === 'boolean' ? structured.interested : null,
     callback_requested: structured.callbackRequested === true,
     transferred_to_dossy: transferred,
     summary: call.summary || call.analysis?.summary || null,
     transcript: call.transcript || call.artifact?.transcript || null,
     recording_url: call.recordingUrl || call.artifact?.recordingUrl || call.artifact?.stereoRecordingUrl || null,
-    structured_data: structured,
+    structured_data: { ...structured, appointmentStartTime: appointment.startTime },
     raw_data: { toolCalls, transfers: call.artifact?.transfers || [], forwardedPhoneNumber: call.forwardedPhoneNumber || null },
     source: 'vapi',
     vapi_created_at: call.createdAt || null,
