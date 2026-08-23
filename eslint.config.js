@@ -20,4 +20,8 @@ export default [
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
     },
   },
+  {
+    files: ['api/**/*.js'],
+    languageOptions: { globals: globals.node },
+  },
 ]

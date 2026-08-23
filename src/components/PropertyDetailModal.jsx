@@ -8,11 +8,12 @@ import MoveInDateSelector from './MoveInDateSelector.jsx'
 import PriceSummary from './PriceSummary.jsx'
 import { getRent, money, planUnit } from '../utils/pricing.js'
 
-export default function PropertyDetailModal({ property, initialPlan, initialDate, isFavorite, onFavorite, onApply, onRequestCall, onClose }) {
+export default function PropertyDetailModal({ property, initialPlan, initialDate, isFavorite, onFavorite, onApply, onRequestCall, onDeposit, onClose }) {
   const [galleryIndex, setGalleryIndex] = useState(0)
   const [plan, setPlan] = useState(initialPlan || 'weekly')
   const [moveInDate, setMoveInDate] = useState(initialDate || property.earliestMoveInDate)
   const [shareMessage, setShareMessage] = useState('')
+  const holdDeposit = Number(property.holdDeposit || 175)
   const share = async () => {
     const data = { title: property.title, text: `Check out ${property.title} on Smart Roomz USA`, url: window.location.href }
     try { if (navigator.share) await navigator.share(data); else { await navigator.clipboard.writeText(window.location.href); setShareMessage('Link copied') } } catch { setShareMessage('Share canceled') }
@@ -33,6 +34,8 @@ export default function PropertyDetailModal({ property, initialPlan, initialDate
           <label className="field"><span>Payment frequency</span><PricingSelector value={plan} onChange={setPlan} /></label>
           <MoveInDateSelector value={moveInDate} onChange={setMoveInDate} min={property.earliestMoveInDate} />
           <PriceSummary property={property} plan={plan} />
+          <div className="hold-callout"><strong>Ready to reserve it?</strong><span>A {money(holdDeposit)} deposit holds this room.</span></div>
+          <button className="deposit-button wide" onClick={() => onDeposit(property)}>Hold this room — {money(holdDeposit)}</button>
           <button className="primary-button wide" onClick={() => onApply({ property, plan, moveInDate })}>Apply for this room</button>
           <button className="secondary-button wide" onClick={() => onRequestCall({ property, moveInDate })}>Request a call</button>
           <p className="fine-print">You will review everything before submitting.</p>

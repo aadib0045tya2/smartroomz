@@ -10,11 +10,13 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
+    "@supabase/supabase-js": "2.112.3",
     "@vitejs/plugin-react": "latest",
     "lucide-react": "latest",
-    "vite": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "square": "45.0.1",
+    "vite": "latest"
   },
   "devDependencies": {
     "@eslint/js": "latest",

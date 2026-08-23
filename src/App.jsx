@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import Header from './components/Header.jsx'
 import SearchBar from './components/SearchBar.jsx'
@@ -10,12 +10,14 @@ import MapPanel from './components/MapPanel.jsx'
 import PropertyDetailModal from './components/PropertyDetailModal.jsx'
 import ApplicationModal from './components/ApplicationModal.jsx'
 import RequestCallModal from './components/RequestCallModal.jsx'
+import DepositModal from './components/DepositModal.jsx'
 import SavedRoomsView from './components/SavedRoomsView.jsx'
 import ApplicationsView from './components/ApplicationsView.jsx'
 import MarketingSections from './components/MarketingSections.jsx'
 import Footer from './components/Footer.jsx'
 import MobileNavigation from './components/MobileNavigation.jsx'
-import { properties } from './data/properties.js'
+import { properties as fallbackProperties } from './data/properties.js'
+import { fromPropertyRow, supabase } from './lib/supabase.js'
 import { defaultFilters, initialSearch } from './data/uiDefaults.js'
 import { usePersistentState } from './hooks/usePersistentState.js'
 import { getRent } from './utils/pricing.js'
@@ -32,10 +34,19 @@ export default function App() {
   const [selectedProperty, setSelectedProperty] = useState(null)
   const [applicationContext, setApplicationContext] = useState(null)
   const [callContext, setCallContext] = useState(null)
+  const [depositProperty, setDepositProperty] = useState(null)
+  const [siteProperties, setSiteProperties] = useState(fallbackProperties)
   const [favorites, setFavorites] = usePersistentState('smartroomz:favorites', [])
   const [applications, setApplications] = usePersistentState('smartroomz:applications', [])
   const [, setCallRequests] = usePersistentState('smartroomz:call-requests', [])
   const searchRef = useRef(null)
+
+  useEffect(() => {
+    if (!supabase) return
+    supabase.from('properties').select('*').order('featured', { ascending: false }).then(({ data, error }) => {
+      if (!error && data?.length) setSiteProperties(data.map(fromPropertyRow))
+    })
+  }, [])
 
   const toggleFavorite = (id) => setFavorites((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
   const clearFilters = () => { setFilters(defaultFilters); setCategory('all'); setDraftSearch(initialSearch); setSearch(initialSearch) }
@@ -48,19 +59,33 @@ export default function App() {
     const max = Number(filters.maxPrice || Infinity)
     const moveIn = search.moveInDate
     const roomType = filters.roomType === 'any' ? search.roomType : filters.roomType
-    const results = properties.filter((property) => {
+    const results = siteProperties.filter((property) => {
       const locationMatch = !location || ['atlanta', 'atlanta, ga', 'metro atlanta'].includes(location) || `${property.title} ${property.area} ${property.city} ${property.state} ${property.zip}`.toLowerCase().includes(location)
       const price = getRent(property, plan)
       const categoryMatch = category === 'all' || (category === 'featured' && property.featured) || (category === 'under200' && price < 200) || (category === 'fast' && /available now|fast|ready/i.test(property.availability)) || property.area === category
       return locationMatch && categoryMatch && (!filters.areas.length || filters.areas.includes(property.area)) && price >= min && price <= max && (!filters.under200 || price < 200) && (!filters.fast || /available now|fast|ready/i.test(property.availability)) && (roomType === 'any' || property.roomType === roomType) && (!moveIn || property.earliestMoveInDate <= moveIn)
     })
     return [...results].sort((a, b) => sort === 'price-low' ? getRent(a, plan) - getRent(b, plan) : sort === 'price-high' ? getRent(b, plan) - getRent(a, plan) : sort === 'rating' ? b.rating - a.rating : Number(b.featured) - Number(a.featured))
-  }, [search, category, filters, sort])
+  }, [search, category, filters, sort, siteProperties])
 
   const plan = filters.paymentPlan === 'any' ? search.paymentPlan : filters.paymentPlan
   const openApply = (context) => { setSelectedProperty(null); setApplicationContext(context) }
   const openCall = (context = {}) => { setSelectedProperty(null); setCallContext(context) }
   const browse = () => { setView('browse'); window.scrollTo({ top: 0, behavior: 'smooth' }) }
+  const submitApplication = async (application) => {
+    if (supabase) {
+      const { error } = await supabase.from('applications').insert({ property_id: application.propertyId, property_title: application.property, applicant_name: application.applicant, email: application.email, phone: application.phone, room_preference: application.roomPreference, move_in_date: application.moveInDate, payment_plan: application.paymentPlan, estimated_amount_cents: Math.round(application.estimatedAmount * 100), status: 'submitted' })
+      if (error) throw error
+    }
+    setApplications((current) => [application, ...current])
+  }
+  const submitCall = async (request) => {
+    const response = await fetch('/api/create-call-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) })
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.error || 'Could not send your request.')
+    setCallRequests((current) => [request, ...current])
+    return result
+  }
   return <div className="app">
     <Header currentView={view} setView={setView} savedCount={favorites.length} onSearchFocus={() => { setView('browse'); setTimeout(() => searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0) }} onRequestCall={() => openCall()} />
     {view === 'browse' && <>
@@ -69,13 +94,14 @@ export default function App() {
       <main className="listing-section" id="rooms"><div className="listing-heading"><div><p className="eyebrow">Furnished rooms · Flexible terms</p><h1>{search.location ? `Rooms near ${search.location}` : 'Find your next room'}</h1><p>{filteredProperties.length} {filteredProperties.length === 1 ? 'stay' : 'stays'} available</p></div><MapListToggle showMap={showMap} setShowMap={setShowMap} /></div><div className={showMap ? 'results-layout map-open' : 'results-layout'}><PropertyGrid properties={filteredProperties} plan={plan} favorites={favorites} onFavorite={toggleFavorite} onOpen={setSelectedProperty} onClear={clearFilters} />{showMap && <MapPanel properties={filteredProperties} onOpen={setSelectedProperty} />}</div></main>
       <MarketingSections onBrowse={browse} onRequestCall={() => openCall()} />
     </>}
-    {view === 'saved' && <SavedRoomsView properties={properties.filter((item) => favorites.includes(item.id))} plan={plan} favorites={favorites} onFavorite={toggleFavorite} onOpen={setSelectedProperty} onBrowse={browse} />}
+    {view === 'saved' && <SavedRoomsView properties={siteProperties.filter((item) => favorites.includes(item.id))} plan={plan} favorites={favorites} onFavorite={toggleFavorite} onOpen={setSelectedProperty} onBrowse={browse} />}
     {view === 'applications' && <ApplicationsView applications={applications} onBrowse={browse} />}
     <Footer setView={setView} onRequestCall={() => openCall()} />
     <MobileNavigation view={view} setView={setView} onRequestCall={() => openCall()} />
     <FiltersDrawer open={filtersOpen} filters={filters} setFilters={setFilters} onClose={() => setFiltersOpen(false)} onClear={() => setFilters(defaultFilters)} resultCount={filteredProperties.length} />
-    {selectedProperty && <PropertyDetailModal property={selectedProperty} initialPlan={plan} initialDate={search.moveInDate} isFavorite={favorites.includes(selectedProperty.id)} onFavorite={() => toggleFavorite(selectedProperty.id)} onApply={openApply} onRequestCall={openCall} onClose={() => setSelectedProperty(null)} />}
-    {applicationContext && <ApplicationModal context={applicationContext} onSubmit={(application) => setApplications((current) => [application, ...current])} onClose={() => setApplicationContext(null)} />}
-    {callContext && <RequestCallModal property={callContext.property} moveInDate={callContext.moveInDate} properties={properties} onSubmit={(request) => setCallRequests((current) => [request, ...current])} onClose={() => setCallContext(null)} />}
+    {selectedProperty && <PropertyDetailModal property={selectedProperty} initialPlan={plan} initialDate={search.moveInDate} isFavorite={favorites.includes(selectedProperty.id)} onFavorite={() => toggleFavorite(selectedProperty.id)} onApply={openApply} onRequestCall={openCall} onDeposit={(property) => { setSelectedProperty(null); setDepositProperty(property) }} onClose={() => setSelectedProperty(null)} />}
+    {applicationContext && <ApplicationModal context={applicationContext} onSubmit={submitApplication} onClose={() => setApplicationContext(null)} />}
+    {callContext && <RequestCallModal property={callContext.property} moveInDate={callContext.moveInDate} properties={siteProperties} onSubmit={submitCall} onClose={() => setCallContext(null)} />}
+    {depositProperty && <DepositModal property={depositProperty} onClose={() => setDepositProperty(null)} />}
   </div>
 }
